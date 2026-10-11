@@ -7,7 +7,9 @@
 .global _start
 .type _start, @function
 _start:
-    mv a0, sp
+    mv a1, sp
+    li t0, 65536
+    sub sp, sp, t0
     tail __hyper_rtld_start
 .size _start, . - _start
 .global __hyper_rtld_enter

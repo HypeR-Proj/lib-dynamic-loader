@@ -7,7 +7,8 @@
 .global _start
 .type _start, %function
 _start:
-    mov x0, sp
+    mov x1, sp
+    sub sp, sp, #16, lsl #12
     b __hyper_rtld_start
 .size _start, . - _start
 

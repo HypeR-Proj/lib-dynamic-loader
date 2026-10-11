@@ -18,6 +18,7 @@
 #define __aarch64__ 1
 #endif
 #include "../src/rtld.c"
+#include "../../elf-loader/launch.c"
 const Elf64_Ehdr __ehdr_start = {0};
 
 typedef struct {
@@ -354,7 +355,7 @@ static void file_bounds(void)
 	assert(hyper_dlopen_at(1, "truncated.so", HYPER_RTLD_NOW) == NULL);
 	assert(strcmp(last_error, "truncated program headers") == 0);
 	assert(reads == 1 && object_count == 0 && effect_count == 2);
-	assert(effects[0] == 320 && effects[1] == 321);
+	assert(effects[0] == 321 && effects[1] == 320);
 	file_header.phoff = UINT64_MAX;
 	effect_count = reads = 0;
 	assert(hyper_dlopen_at(1, "overflow.so", HYPER_RTLD_NOW) == NULL);
@@ -375,9 +376,26 @@ static void file_bounds(void)
 	effect_count = reads = 0;
 	assert(hyper_dlopen_at(1, "map-fails.so", HYPER_RTLD_NOW) == NULL);
 	assert(strcmp(last_error, "read-only shared-object mapping failed") == 0);
-	const unsigned expected[] = {320, 400, 500, 321, 142, 242};
+	const unsigned expected[] = {400, 500, 321, 320, 142, 242};
 	assert(effect_count == 6 && memcmp(effects, expected, sizeof(expected)) == 0);
 	assert(object_count == 0 && next_library_address == LIBRARY_BASE);
+}
+
+hyper_call_result_t hyper_byte_channel_read(hyper_native_handle_t channel, void *out, size_t size)
+{
+	(void)channel;
+	(void)out;
+	(void)size;
+	abort();
+}
+
+hyper_native_status_t hyper_byte_channel_write(hyper_native_handle_t channel, const void *bytes,
+					       size_t size)
+{
+	(void)channel;
+	(void)bytes;
+	(void)size;
+	abort();
 }
 
 /* Unexpected Native effects fail closed so added loader behavior is reviewed. */
@@ -426,7 +444,7 @@ hyper_call_result_t hyper_directory_open_file(hyper_native_handle_t h, const voi
 	return (hyper_call_result_t){0, 20, 0};
 }
 
-hyper_call_result_t hyper_file_create_executable_vmo(hyper_native_handle_t h)
+hyper_call_result_t hyper_file_protect(hyper_native_handle_t h)
 {
 	assert(h == 20);
 	return (hyper_call_result_t){0, 21, file_length};
@@ -438,9 +456,9 @@ hyper_native_status_t hyper_handle_close(hyper_native_handle_t h)
 	return HYPER_NATIVE_STATUS_OK;
 }
 
-hyper_native_status_t hyper_vmo_read(hyper_native_handle_t h, uint64_t off, void *out, size_t n)
+hyper_call_result_t hyper_file_read_at(hyper_native_handle_t h, uint64_t off, void *out, size_t n)
 {
-	assert(h == 21);
+	assert(h == 20);
 	reads++;
 	if (off == 0 && n == sizeof(file_header))
 		memcpy(out, &file_header, n);
@@ -448,7 +466,7 @@ hyper_native_status_t hyper_vmo_read(hyper_native_handle_t h, uint64_t off, void
 		memcpy(out, file_segments, n);
 	else
 		abort();
-	return HYPER_NATIVE_STATUS_OK;
+	return (hyper_call_result_t){.value0 = n};
 }
 
 hyper_call_result_t hyper_vmar_allocate(hyper_native_handle_t h, uintptr_t a, size_t n,
@@ -460,10 +478,11 @@ hyper_call_result_t hyper_vmar_allocate(hyper_native_handle_t h, uintptr_t a, si
 	return (hyper_call_result_t){0, 42, 0};
 }
 
-hyper_native_status_t hyper_vmar_map_private(hyper_native_handle_t h, hyper_native_handle_t s,
-					     const hyper_native_private_mapping_t *m, size_t n)
+hyper_native_status_t hyper_vmar_map_file(hyper_native_handle_t h, hyper_native_handle_t file,
+					  hyper_native_handle_t s,
+					  const hyper_native_private_mapping_t *m, size_t n)
 {
-	assert(fail_mapping && h == 42 && s == 21 && n == sizeof(*m));
+	assert(fail_mapping && h == 42 && file == 20 && s == 21 && n == sizeof(*m));
 	effect(500);
 	return HYPER_NATIVE_STATUS_NO_MEMORY;
 }

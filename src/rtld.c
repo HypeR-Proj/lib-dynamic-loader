@@ -5,7 +5,7 @@
 /*
  * Bounded HypeR Native runtime linker.
  *
- * The userspace loader maps the main image and this interpreter. This file owns all
+ * The bootstrap entry maps the main image directly. This file owns all
  * dependency lookup and symbol policy. It intentionally supports only eager
  * Native RELA/RELR relocation and capability-relative library lookup.
  */
@@ -20,6 +20,7 @@
 #define EI_NIDENT 16
 #define ET_DYN 3
 #include "arch.h"
+#include "launch.h"
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
 #define PT_PHDR 6
@@ -257,13 +258,21 @@ static int pointer_aligned(const void *pointer, size_t alignment)
 	return ((uintptr_t)pointer & (alignment - 1)) == 0;
 }
 
-static int read_exact(hyper_native_handle_t snapshot, uint64_t byte_size, uint64_t offset,
-		      void *output, size_t length)
+static int read_exact(hyper_native_handle_t file, uint64_t byte_size, uint64_t offset, void *output,
+		      size_t length)
 {
 	if (offset > byte_size || length > byte_size - offset) {
 		return 0;
 	}
-	return hyper_vmo_read(snapshot, offset, output, length) == HYPER_NATIVE_STATUS_OK;
+	while (length) {
+		hyper_call_result_t read = hyper_file_read_at(file, offset, output, length);
+		if (read.status || !read.value0 || read.value0 > length)
+			return 0;
+		output = (unsigned char *)output + read.value0;
+		offset += read.value0;
+		length -= read.value0;
+	}
+	return 1;
 }
 
 static int parse_symbol_hash(Object *object, uint64_t address)
@@ -920,25 +929,23 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 		}
 	}
 	hyper_call_result_t opened = hyper_directory_open_file(
-		directory, name, name_length, HYPER_NATIVE_RIGHT_READ | HYPER_NATIVE_RIGHT_EXECUTE);
+		directory, name, name_length,
+		HYPER_NATIVE_RIGHT_READ | HYPER_NATIVE_RIGHT_EXECUTE | HYPER_NATIVE_RIGHT_PROTECT);
 	if (opened.status != HYPER_NATIVE_STATUS_OK) {
 		last_error = "library open failed";
 		return NULL;
 	}
 	hyper_native_handle_t file = opened.value0;
-	hyper_native_handle_t file_vmo = 0;
-	hyper_call_result_t file_vmo_result = hyper_file_create_executable_vmo(file);
-	if (file_vmo_result.status != HYPER_NATIVE_STATUS_OK) {
-		last_error = "executable VMO creation failed";
+	hyper_native_handle_t protection = 0;
+	hyper_call_result_t protected = hyper_file_protect(file);
+	if (protected.status != HYPER_NATIVE_STATUS_OK) {
+		last_error = "file content protection failed";
 		goto fail;
 	}
-	file_vmo = file_vmo_result.value0;
-	uint64_t file_size = file_vmo_result.value1;
-	(void)hyper_handle_close(file);
-	file = 0;
+	protection = protected.value0;
+	uint64_t file_size = protected.value1;
 	Elf64_Ehdr header;
-	if (!read_exact(file_vmo, file_size, 0, &header, sizeof(header)) ||
-	    !validate_header(&header)) {
+	if (!read_exact(file, file_size, 0, &header, sizeof(header)) || !validate_header(&header)) {
 		last_error = "invalid shared object header";
 		goto fail;
 	}
@@ -948,8 +955,7 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 	}
 	size_t program_header_bytes = (size_t)header.phnum * sizeof(Elf64_Phdr);
 	if (header.phoff > UINT64_MAX - program_header_bytes ||
-	    !read_exact(file_vmo, file_size, header.phoff, object->owned_phdr,
-			program_header_bytes)) {
+	    !read_exact(file, file_size, header.phoff, object->owned_phdr, program_header_bytes)) {
 		last_error = "truncated program headers";
 		goto fail;
 	}
@@ -1073,8 +1079,8 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 			.permissions = permissions,
 			.mode = HYPER_NATIVE_PRIVATE_MAPPING_COPY_ON_WRITE,
 		};
-		hyper_native_status_t status =
-			hyper_vmar_map_private(object->vmar, file_vmo, &mapping, sizeof(mapping));
+		hyper_native_status_t status = hyper_vmar_map_file(object->vmar, file, protection,
+								   &mapping, sizeof(mapping));
 		if (status != HYPER_NATIVE_STATUS_OK) {
 			if ((segment->flags & PF_X) != 0) {
 				last_error = "executable shared-object mapping failed";
@@ -1086,8 +1092,10 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 			goto fail;
 		}
 	}
-	(void)hyper_handle_close(file_vmo);
-	file_vmo = 0;
+	(void)hyper_handle_close(protection);
+	protection = 0;
+	(void)hyper_handle_close(file);
+	file = 0;
 	if (!parse_dynamic(object)) {
 		return NULL;
 	}
@@ -1106,8 +1114,8 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 	return object;
 
 fail:
-	if (file_vmo != 0)
-		(void)hyper_handle_close(file_vmo);
+	if (protection != 0)
+		(void)hyper_handle_close(protection);
 	if (file != 0)
 		(void)hyper_handle_close(file);
 	return NULL;
@@ -1206,72 +1214,18 @@ static int register_interpreter(uintptr_t base)
 	interpreter->relocated = 1;
 	interpreter->initialized = 1;
 	++object_count;
-	if (!parse_dynamic(interpreter)) {
+	if (!parse_dynamic(interpreter) || !protect_relro(interpreter)) {
 		--object_count;
 		return 0;
 	}
 	return 1;
 }
 
-static int initialize_main(const uintptr_t *stack)
+static int initialize_main(const ElfImage *image, const ElfLaunch *launch)
 {
-	uintptr_t argc = stack[0];
-	if (argc > 4096) {
-		last_error = "invalid argument vector";
-		return 0;
-	}
-	const uintptr_t *cursor = stack + 1 + argc;
-	if (*cursor++ != 0) {
-		last_error = "unterminated argument vector";
-		return 0;
-	}
-	while (*cursor != 0)
-		++cursor;
-	++cursor;
-	uintptr_t phdr = 0;
-	uintptr_t phent = 0;
-	uintptr_t phnum = 0;
-	uintptr_t base = 0;
-	uintptr_t entry = 0;
-	uintptr_t handles = 0;
-	uintptr_t handle_count = 0;
-	while (cursor[0] != AT_NULL) {
-		switch (cursor[0]) {
-		case AT_PHDR:
-			phdr = cursor[1];
-			break;
-		case AT_PHENT:
-			phent = cursor[1];
-			break;
-		case AT_PHNUM:
-			phnum = cursor[1];
-			break;
-		case AT_BASE:
-			base = cursor[1];
-			break;
-		case AT_ENTRY:
-			entry = cursor[1];
-			break;
-		case HYPER_AUXV_STARTUP_HANDLES:
-			handles = cursor[1];
-			break;
-		case HYPER_AUXV_STARTUP_HANDLE_COUNT:
-			handle_count = cursor[1];
-			break;
-		default:
-			break;
-		}
-		cursor += 2;
-	}
-	if (phdr == 0 || phent != sizeof(Elf64_Phdr) || phnum == 0 || phnum > MAX_PROGRAM_HEADERS ||
-	    base == 0 || entry == 0 || handles == 0 ||
-	    !pointer_aligned((const void *)phdr, _Alignof(Elf64_Phdr)) ||
-	    !pointer_aligned((const void *)handles, _Alignof(hyper_native_startup_handle_t)) ||
-	    handle_count > HYPER_NATIVE_STARTUP_MAX_HANDLES) {
-		last_error = "invalid startup auxiliary vector";
-		return 0;
-	}
-	const hyper_native_startup_handle_t *records = (const void *)handles;
+	uintptr_t base = launch->boot->loader_base;
+	size_t handle_count = launch->boot->handle_count + 2;
+	const hyper_native_startup_handle_t *records = launch->handles;
 	for (size_t index = 0; index < handle_count; ++index) {
 		if (records[index].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_ROOT_VMAR) {
 			root_vmar = records[index].handle;
@@ -1290,25 +1244,14 @@ static int initialize_main(const uintptr_t *stack)
 	for (size_t index = 0; index < sizeof(*main); ++index)
 		((unsigned char *)main)[index] = 0;
 	copy_name(main->name, "<main>");
-	main->phdr = (const void *)phdr;
-	main->phnum = phnum;
+	main->phnum = image->header.phnum;
+	for (size_t index = 0; index < main->phnum; ++index)
+		main->owned_phdr[index] = image->phdr[index];
+	main->phdr = main->owned_phdr;
+	main->base = image->base;
 	main->vmar = root_vmar;
 	main->references = 1;
 	main->flags = HYPER_RTLD_GLOBAL;
-	for (size_t index = 0; index < main->phnum; ++index) {
-		if (main->phdr[index].type == PT_PHDR) {
-			if (phdr < main->phdr[index].vaddr) {
-				last_error = "main image load bias underflow";
-				return 0;
-			}
-			main->base = phdr - main->phdr[index].vaddr;
-			break;
-		}
-	}
-	if (main->base == 0) {
-		last_error = "main image has no program-header mapping";
-		return 0;
-	}
 	object_count = 1;
 	if (!parse_dynamic(main))
 		return 0;
@@ -1355,27 +1298,27 @@ static _Noreturn void enter_application(const uintptr_t *stack)
 	hyper_process_exit(HYPER_NATIVE_STATUS_BAD_STATE);
 }
 
-extern const Elf64_Ehdr __ehdr_start __attribute__((visibility("hidden")));
-
-_Noreturn void __hyper_rtld_start(const uintptr_t *stack)
+/* Called only after self relocation and complete main-image admission. */
+_Noreturn __attribute__((visibility("hidden"))) void
+__hyper_rtld_link(const ElfImage *image, const ElfLaunch *launch, hyper_native_handle_t channel)
 {
-	if (!hyper_elf_self_relocate(&__ehdr_start))
-		hyper_process_exit(HYPER_NATIVE_STATUS_NOT_SUPPORTED);
-	if (!initialize_main(stack)) {
+	if (!initialize_main(image, launch)) {
 		report_startup_failure();
-		hyper_process_exit(HYPER_NATIVE_STATUS_NOT_SUPPORTED);
+		elf_launch_fail(channel, HYPER_NATIVE_STATUS_NOT_SUPPORTED);
 	}
-	/* Resolve in the relocated shared runtime, never the interpreter's static
-	 * primitives or an interposing app. This call abandons our bootstrap frames. */
+	/* Resolve in the relocated shared runtime, never the loader's static
+	 * primitives or an interposing app. The loader remains resident for dlopen. */
 	Object *runtime = find_object("libhyper.so");
 	int weak = 0;
 	void *hook = runtime ? find_symbol_in(runtime, "hyper_runtime_start", &weak) : NULL;
 	if (!hook) {
 		last_error = "missing Native runtime startup handoff";
 		report_startup_failure();
-		hyper_process_exit(HYPER_NATIVE_STATUS_NOT_SUPPORTED);
+		elf_launch_fail(channel, HYPER_NATIVE_STATUS_NOT_SUPPORTED);
 	}
-	((void (*)(const uintptr_t *, void (*)(const uintptr_t *)))hook)(stack, enter_application);
+	uintptr_t stack = elf_launch_stack(launch, image, channel, launch->boot->loader_base, 0);
+	((void (*)(const uintptr_t *, void (*)(const uintptr_t *)))hook)((const void *)stack,
+									 enter_application);
 	hyper_process_exit(HYPER_NATIVE_STATUS_INTERNAL);
 }
 
