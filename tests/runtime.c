@@ -18,7 +18,7 @@
 #define __aarch64__ 1
 #endif
 #include "../src/rtld.c"
-#include "../../elf-loader/launch.c"
+#include "../elf/launch.c"
 const Elf64_Ehdr __ehdr_start = {0};
 
 typedef struct {

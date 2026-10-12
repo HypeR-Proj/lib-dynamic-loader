@@ -14,7 +14,7 @@ with a bootstrap-channel handle, exactly as for the smaller
 [stage-1 loader](../../bootstrap/stage1/userspace-loader/README.md).
 
 The loader self-relocates before accessing initialized state, then uses the
-internal [ELF loading primitives](../elf-loader/README.md) to map the application
+internal [ELF loading primitives](elf/README.md) to map the application
 once and construct its entry vector. A dynamic application's `PT_INTERP` must
 name `/lib64/ld-hyper-<arch>.so`; this is validated metadata, not an instruction
 to open or map another loader. The former stack-only interpreter entry is no
