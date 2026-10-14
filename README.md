@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 This component loads every formal-environment Native application, including
 static executables. It is installed as `ld-hyper-aarch64.so` or
-`ld-hyper-riscv64.so`; a split deployment keeps it in `/system/lib64/`, alongside
+`ld-hyper-riscv64.so`; the system root keeps it in `/lib64/`, alongside
 the architecture library directory. `ProcessBuilder` receives an explicit
 `READ|EXECUTE` File capability naming this loader. The kernel maps it and enters
 with a bootstrap-channel handle, exactly as for the smaller
@@ -25,7 +25,7 @@ application relocation.
 
 Library lookup is capability-relative: the loader receives a Directory
 handle for the deployment's architecture library directory (normally
-`/system/lib64/<arch>-hyper-hyper/`) and accepts exact relative object
+`/lib64/<arch>-hyper-hyper/`) and accepts exact relative object
 names, never ambient search paths or other architecture directories.
 The Directory must carry `READ|EXECUTE|PROTECT`; each library is opened with
 those rights and protected before reading its size or headers. Mapped segments
@@ -105,3 +105,13 @@ constructor side effects.
 Both ELF architectures run under UBSan; Linux CI also enables ASan. These tests
 do not emulate page tables or prove the executable mapping/constructor path:
 the Native dynamic-loading QEMU acceptance tests remain required.
+
+## Service residency
+
+The loader creates ordinary protected, reclaimable file mappings. A service
+with explicit `LOCK_MEMORY` authority may populate and lock its own current
+mappings before accepting work. `mlock` belongs to the VMAR contract, not loader
+environment policy; it does not cover future mappings or later `dlopen` calls.
+Services that must not fault into their own filesystem must establish residency
+before readiness and lock any later file-backed additions explicitly. Unmap,
+explicit unlock, and process teardown release their residency claims.

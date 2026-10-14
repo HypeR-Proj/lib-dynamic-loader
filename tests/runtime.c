@@ -483,6 +483,7 @@ hyper_native_status_t hyper_vmar_map_file(hyper_native_handle_t h, hyper_native_
 					  const hyper_native_private_mapping_t *m, size_t n)
 {
 	assert(fail_mapping && h == 42 && file == 20 && s == 21 && n == sizeof(*m));
+	assert(m->mode == HYPER_NATIVE_PRIVATE_MAPPING_COPY_ON_WRITE);
 	effect(500);
 	return HYPER_NATIVE_STATUS_NO_MEMORY;
 }
