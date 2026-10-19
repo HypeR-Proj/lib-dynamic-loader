@@ -4,6 +4,7 @@
 /* Formal-environment entry: the kernel already mapped this loader. */
 #include "launch.h"
 #include <hyper/relocate.h>
+#include <hyper/invocation.h>
 
 #if defined(__aarch64__)
 #define INTERPRETER "/lib64/ld-hyper-aarch64.so"
@@ -22,17 +23,22 @@ _Noreturn void __hyper_rtld_start(hyper_native_handle_t channel, uintptr_t stack
 {
 	/* Do not access writable globals, external data or GOT pointers before this. */
 	if (!hyper_elf_self_relocate(&__ehdr_start))
-		hyper_process_exit(HYPER_NATIVE_STATUS_NOT_SUPPORTED);
+		__builtin_trap();
 	ElfLaunch launch;
 	hyper_native_status_t status = elf_launch_receive(&launch, channel, stack_top);
 	if (status)
-		elf_launch_fail(channel, status);
+		elf_launch_fail(channel, launch.boot ? launch.boot->execution_context : 0, status);
+	status = hyper_native_bind_invocation_handles(launch.boot->execution_context,
+						      launch.boot->object_factory,
+						      launch.boot->system_info);
+	if (status)
+		elf_launch_fail(channel, launch.boot->execution_context, status);
 	ElfImage main;
 	status = elf_image_load(&main, launch.boot->root_vmar, launch.boot->executable, 0x400000,
 				0x10000000, INTERPRETER);
 	(void)hyper_handle_close(launch.boot->executable);
 	if (status)
-		elf_launch_fail(channel, status);
+		elf_launch_fail(channel, launch.boot->execution_context, status);
 	if (!main.interpreter[0]) {
 		/* AT_BASE=0 keeps static CRT self relocation enabled. Its runtime retires
 		 * this loader after switching stacks; no loader continuation survives. */

@@ -14,7 +14,9 @@ with a bootstrap-channel handle, exactly as for the smaller
 [stage-1 loader](../../bootstrap/stage1/userspace-loader/README.md).
 
 The loader self-relocates before accessing initialized state, then uses the
-internal [ELF loading primitives](elf/README.md) to map the application
+96-byte startup record to bind its ExecutionContext, ObjectFactory and SystemInfo
+handles before any context-dependent operation. It uses the internal
+[ELF loading primitives](elf/README.md) to map the application
 once and construct its entry vector. A dynamic application's `PT_INTERP` must
 name `/lib64/ld-hyper-<arch>.so`; this is validated metadata, not an instruction
 to open or map another loader. The former stack-only interpreter entry is no
@@ -60,7 +62,8 @@ require an explicit process-wide quiescence protocol.
 
 For dynamic applications the loader resolves `hyper_runtime_start` directly
 in the relocated `libhyper.so` and passes the entry vector and a non-returning
-continuation. The shared runtime initializes the heap, creates the final main
+continuation. That vector carries the same invocation capabilities to the shared
+runtime. It binds them before initializing the heap, then creates the final main
 stack, copies startup data, switches SP and releases the kernel bootstrap
 stack. It retains this loader's mappings: constructors, its continuation and
 later `dlopen` calls still use them. `AT_BASE` identifies this already mapped

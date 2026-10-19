@@ -14,11 +14,16 @@ _Static_assert(MESSAGE_BYTES + HYPER_NATIVE_STARTUP_MAX_HANDLES * 16 +
 		       65536,
 	       "startup packet and vector must fit the assembly scratch partition");
 
-_Noreturn void elf_launch_fail(hyper_native_handle_t channel, hyper_native_status_t status)
+_Noreturn void elf_launch_fail(hyper_native_handle_t channel, hyper_native_handle_t execution,
+			       hyper_native_status_t status)
 {
 	hyper_launch_result_t result = {.status = status};
 	(void)hyper_byte_channel_write(channel, &result, sizeof(result));
-	hyper_process_exit(status);
+	if (execution)
+		(void)hyper_native_invoke6(execution, HYPER_NATIVE_OP_PROCESS_EXIT,
+					   (uint64_t)status, 0, 0, 0, 0, 0);
+	/* A malformed startup message grants no execution capability. */
+	__builtin_trap();
 }
 
 static int launch_data_valid(const hyper_launch_data_t *data, size_t size)
@@ -56,31 +61,38 @@ static int launch_data_valid(const hyper_launch_data_t *data, size_t size)
 hyper_native_status_t elf_launch_receive(ElfLaunch *launch, hyper_native_handle_t channel,
 					 uintptr_t stack_top)
 {
+	*launch = (ElfLaunch){0};
 	unsigned char *message = (void *)((stack_top - MESSAGE_BYTES) & ~(uintptr_t)15);
 	hyper_call_result_t received = hyper_byte_channel_read(channel, message, MESSAGE_BYTES);
 	if (received.status)
 		return received.status;
 	hyper_native_loader_startup_t *boot = (void *)message;
 	if (received.value0 < sizeof(*boot) || boot->size != sizeof(*boot) ||
-	    boot->handle_count > HYPER_NATIVE_STARTUP_MAX_HANDLES - 2 || !boot->executable ||
-	    !boot->root_vmar || !boot->stack_vmar ||
+	    boot->handle_count > HYPER_NATIVE_STARTUP_MAX_HANDLES - 5 || !boot->executable ||
+	    !boot->root_vmar || !boot->stack_vmar || !boot->execution_context ||
+	    !boot->object_factory || !boot->system_info ||
 	    boot->data_size > HYPER_NATIVE_PROCESS_STARTUP_DATA_MAX_BYTES ||
 	    boot->flags & ~HYPER_NATIVE_LOADER_STARTUP_REPLY ||
 	    received.value0 != sizeof(*boot) + boot->handle_count * 16 + boot->data_size ||
 	    boot->stack_size < 128 * 1024 || boot->stack_base > UINTPTR_MAX - boot->stack_size ||
 	    boot->stack_base + boot->stack_size != stack_top || boot->stack_base < IMAGE_PAGE)
 		return HYPER_NATIVE_STATUS_INVALID_ARGUMENT;
+	/* A validated header authorizes orderly exit even if later input is invalid. */
+	launch->boot = boot;
 	hyper_native_startup_handle_t *source = (void *)(boot + 1);
 	hyper_launch_data_t *data = (void *)(source + boot->handle_count);
 	if (boot->data_size && !launch_data_valid(data, boot->data_size))
 		return HYPER_NATIVE_STATUS_INVALID_ARGUMENT;
-	/* Root/stack handles are supplied separately by the kernel, not accepted
+	/* Reserved handles are supplied separately by the kernel, not accepted
 	 * from user-tagged input. Reject duplicate roles before runtime adoption. */
-	hyper_native_startup_handle_t *handles = (void *)(message - (boot->handle_count + 2) * 16);
+	hyper_native_startup_handle_t *handles = (void *)(message - (boot->handle_count + 5) * 16);
 	for (size_t i = 0; i < boot->handle_count; ++i) {
 		if (!source[i].purpose || source[i].flags || !source[i].handle ||
 		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_ROOT_VMAR ||
-		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_INITIAL_STACK_VMAR)
+		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_INITIAL_STACK_VMAR ||
+		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_EXECUTION_CONTEXT ||
+		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_OBJECT_FACTORY ||
+		    source[i].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_SYSTEM_INFO)
 			return HYPER_NATIVE_STATUS_INVALID_ARGUMENT;
 		for (size_t j = 0; j < i; ++j)
 			if (source[i].purpose == source[j].purpose)
@@ -93,6 +105,15 @@ hyper_native_status_t elf_launch_receive(ElfLaunch *launch, hyper_native_handle_
 	handles[boot->handle_count + 1] = (hyper_native_startup_handle_t){
 		.purpose = HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_INITIAL_STACK_VMAR,
 		.handle = boot->stack_vmar};
+	handles[boot->handle_count + 2] = (hyper_native_startup_handle_t){
+		.purpose = HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_EXECUTION_CONTEXT,
+		.handle = boot->execution_context};
+	handles[boot->handle_count + 3] = (hyper_native_startup_handle_t){
+		.purpose = HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_OBJECT_FACTORY,
+		.handle = boot->object_factory};
+	handles[boot->handle_count + 4] = (hyper_native_startup_handle_t){
+		.purpose = HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_SYSTEM_INFO,
+		.handle = boot->system_info};
 	*launch = (ElfLaunch){.boot = boot, .handles = handles, .data = data};
 	return HYPER_NATIVE_STATUS_OK;
 }
@@ -128,7 +149,7 @@ uintptr_t elf_launch_stack(const ElfLaunch *launch, const ElfImage *main,
 	AUX(7, linker_base);
 	AUX(9, main->entry);
 	AUX(HYPER_AUXV_STARTUP_HANDLES, (uintptr_t)handles);
-	AUX(HYPER_AUXV_STARTUP_HANDLE_COUNT, boot->handle_count + 2);
+	AUX(HYPER_AUXV_STARTUP_HANDLE_COUNT, boot->handle_count + 5);
 	AUX(HYPER_AUXV_INITIAL_STACK_BASE, boot->stack_base - IMAGE_PAGE);
 	AUX(HYPER_AUXV_INITIAL_STACK_CAPACITY, boot->stack_size);
 	AUX(HYPER_AUXV_INITIAL_STACK_SIZE, boot->stack_size);

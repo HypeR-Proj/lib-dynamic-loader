@@ -399,9 +399,10 @@ hyper_native_status_t hyper_byte_channel_write(hyper_native_handle_t channel, co
 }
 
 /* Unexpected Native effects fail closed so added loader behavior is reviewed. */
-hyper_call_result_t hyper_native_call6(uint64_t n, uint64_t a, uint64_t b, uint64_t c, uint64_t d,
-				       uint64_t e, uint64_t f)
+hyper_call_result_t hyper_native_invoke6(uint64_t receiver, uint64_t n, uint64_t a, uint64_t b,
+					 uint64_t c, uint64_t d, uint64_t e, uint64_t f)
 {
+	(void)receiver;
 	(void)n;
 	(void)a;
 	(void)b;
@@ -519,4 +520,9 @@ int main(void)
 	file_bounds();
 	puts("loader production parsing, symbol lookup, relocation and rollback passed");
 	return 0;
+}
+
+hyper_native_status_t hyper_thread_yield(void)
+{
+	abort();
 }

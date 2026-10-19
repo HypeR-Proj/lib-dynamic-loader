@@ -214,7 +214,7 @@ static void copy_name(char *destination, const char *source)
 static void lock_loader(void)
 {
 	while (__atomic_test_and_set(&loader_lock, __ATOMIC_ACQUIRE)) {
-		(void)hyper_native_call6(HYPER_NATIVE_SYS_THREAD_YIELD, 0, 0, 0, 0, 0, 0);
+		(void)hyper_thread_yield();
 	}
 }
 
@@ -1224,7 +1224,7 @@ static int register_interpreter(uintptr_t base)
 static int initialize_main(const ElfImage *image, const ElfLaunch *launch)
 {
 	uintptr_t base = launch->boot->loader_base;
-	size_t handle_count = launch->boot->handle_count + 2;
+	size_t handle_count = launch->boot->handle_count + 5;
 	const hyper_native_startup_handle_t *records = launch->handles;
 	for (size_t index = 0; index < handle_count; ++index) {
 		if (records[index].purpose == HYPER_NATIVE_STARTUP_HANDLE_PURPOSE_ROOT_VMAR) {
@@ -1304,7 +1304,8 @@ __hyper_rtld_link(const ElfImage *image, const ElfLaunch *launch, hyper_native_h
 {
 	if (!initialize_main(image, launch)) {
 		report_startup_failure();
-		elf_launch_fail(channel, HYPER_NATIVE_STATUS_NOT_SUPPORTED);
+		elf_launch_fail(channel, launch->boot->execution_context,
+				HYPER_NATIVE_STATUS_NOT_SUPPORTED);
 	}
 	/* Resolve in the relocated shared runtime, never the loader's static
 	 * primitives or an interposing app. The loader remains resident for dlopen. */
@@ -1314,7 +1315,8 @@ __hyper_rtld_link(const ElfImage *image, const ElfLaunch *launch, hyper_native_h
 	if (!hook) {
 		last_error = "missing Native runtime startup handoff";
 		report_startup_failure();
-		elf_launch_fail(channel, HYPER_NATIVE_STATUS_NOT_SUPPORTED);
+		elf_launch_fail(channel, launch->boot->execution_context,
+				HYPER_NATIVE_STATUS_NOT_SUPPORTED);
 	}
 	uintptr_t stack = elf_launch_stack(launch, image, channel, launch->boot->loader_base, 0);
 	((void (*)(const uintptr_t *, void (*)(const uintptr_t *)))hook)((const void *)stack,
