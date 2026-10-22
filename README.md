@@ -47,7 +47,7 @@ candidates within one object; global and dependency-scope traversal retain
 visibility filtering and strong-over-weak selection. The table follows the
 [System V ELF hash format](https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.dynamic.html#hash).
 
-The Native [`ldd` command](../../app/README.md#ldd-shared-library-dependency-inspection)
+The Native [`ldd` command](../../docs/usage/applications/ldd.md)
 inspects interpreter and dependency metadata against the standard library layout
 without executing the target. It does not replace loader symbol or relocation
 validation, nor can it infer a different library Directory delegated to a process.
