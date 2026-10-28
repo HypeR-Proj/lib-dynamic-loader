@@ -445,6 +445,13 @@ hyper_call_result_t hyper_directory_open_file(hyper_native_handle_t h, const voi
 	return (hyper_call_result_t){0, 20, 0};
 }
 
+hyper_call_result_t hyper_file_prefetch(hyper_native_handle_t h, uint64_t offset, uint64_t length)
+{
+	assert(h == 20 && offset <= file_length && length <= file_length - offset);
+	assert(length <= HYPER_NATIVE_FILE_MAX_PREFETCH_BYTES);
+	return (hyper_call_result_t){.value0 = length};
+}
+
 hyper_call_result_t hyper_file_protect(hyper_native_handle_t h)
 {
 	assert(h == 20);

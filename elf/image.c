@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "image.h"
+#include "prefetch.h"
 #include <string.h>
 
 #define BAD_IMAGE HYPER_NATIVE_STATUS_INVALID_ARGUMENT
@@ -150,6 +151,7 @@ static hyper_native_status_t load_protected_image(ElfImage *image, hyper_native_
 						  uintptr_t limit, const char *interpreter)
 {
 	memset(image, 0, sizeof(*image));
+	elf_prefetch_header(file, file_size);
 	hyper_native_status_t status =
 		read_image(file, file_size, 0, &image->header, sizeof(image->header));
 	if (status)
@@ -163,6 +165,7 @@ static hyper_native_status_t load_protected_image(ElfImage *image, hyper_native_
 	status = inspect(image, file, file_size, start, limit, interpreter);
 	if (status)
 		return status;
+	elf_prefetch_loads(file, file_size, image->phdr, image->header.phnum);
 	/* The main image uses root mappings. The runtime linker seals its RELRO
 	 * through ROOT_VMAR; dependency images have separate VMARs owned by that
 	 * linker. Admission above separates the application and loader ranges. */

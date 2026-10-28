@@ -21,6 +21,7 @@
 #define ET_DYN 3
 #include "arch.h"
 #include "launch.h"
+#include "prefetch.h"
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
 #define PT_PHDR 6
@@ -944,6 +945,7 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 	}
 	protection = protected.value0;
 	uint64_t file_size = protected.value1;
+	elf_prefetch_header(file, file_size);
 	Elf64_Ehdr header;
 	if (!read_exact(file, file_size, 0, &header, sizeof(header)) || !validate_header(&header)) {
 		last_error = "invalid shared object header";
@@ -1026,6 +1028,7 @@ static Object *load_object(hyper_native_handle_t directory, const char *name, ui
 		last_error = "shared-object address space exhausted";
 		goto fail;
 	}
+	elf_prefetch_loads(file, file_size, object->owned_phdr, header.phnum);
 	hyper_call_result_t area = hyper_vmar_allocate(root_vmar, mapped_start, span,
 						       HYPER_NATIVE_VMAR_ALLOCATE_EXACT);
 	if (area.status != HYPER_NATIVE_STATUS_OK) {
