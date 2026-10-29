@@ -33,8 +33,9 @@
   "packages": [],
   "tests": [
     [
-      "make",
-      "sdk-test"
+      "sh",
+      "sdk/toolchain/scripts/check-dynamic-loader.sh"
     ]
-  ]
+  ],
+  "cargo_context": {}
 }
