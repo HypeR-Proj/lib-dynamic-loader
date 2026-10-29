@@ -47,7 +47,7 @@ candidates within one object; global and dependency-scope traversal retain
 visibility filtering and strong-over-weak selection. The table follows the
 [System V ELF hash format](https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.dynamic.html#hash).
 
-The Native [`ldd` command](https://github.com/HypeR-Proj/HypeR/blob/main/docs/usage/applications/ldd.md)
+The Native [`ldd` command](https://hyper-proj.github.io/ldd/docs/usage.html)
 inspects interpreter and dependency metadata against the standard library layout
 without executing the target. It does not replace loader symbol or relocation
 validation, nor can it infer a different library Directory delegated to a process.
@@ -124,8 +124,8 @@ explicit unlock, and process teardown release their residency claims.
 Use the [HypeR workspace](https://github.com/HypeR-Proj/HypeR) to resolve dependencies:
 
 ```sh
-./HypeR/hyper test dynamic-loader
+python3 project.py test lib-dynamic-loader
 ```
 
-Build paths in detailed documentation refer to the generated `out/system` directory.
+Paths in the documentation are relative to the repo-managed workspace root.
 Edit this repository and prepare the workspace again before building.
