@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "dynamic-loader",
+  "kind": "library",
+  "origin": {
+    "repository": "https://github.com/roolrz/HypeR",
+    "commit": "8d42d047058a2b58a291803700e86487fb723f7a"
+  },
+  "sources": {
+    "CMakeLists.txt": "lib/dynamic-loader/CMakeLists.txt",
+    "README.md": "lib/dynamic-loader/README.md",
+    "component.mk": "lib/dynamic-loader/component.mk",
+    "elf/CMakeLists.txt": "lib/dynamic-loader/elf/CMakeLists.txt",
+    "elf/README.md": "lib/dynamic-loader/elf/README.md",
+    "elf/image.c": "lib/dynamic-loader/elf/image.c",
+    "elf/image.h": "lib/dynamic-loader/elf/image.h",
+    "elf/launch.c": "lib/dynamic-loader/elf/launch.c",
+    "elf/launch.h": "lib/dynamic-loader/elf/launch.h",
+    "elf/prefetch.h": "lib/dynamic-loader/elf/prefetch.h",
+    "src/arch.h": "lib/dynamic-loader/src/arch.h",
+    "src/arch/aarch64/start.S": "lib/dynamic-loader/src/arch/aarch64/start.S",
+    "src/arch/riscv64/start.S": "lib/dynamic-loader/src/arch/riscv64/start.S",
+    "src/bootstrap.c": "lib/dynamic-loader/src/bootstrap.c",
+    "src/rtld.c": "lib/dynamic-loader/src/rtld.c",
+    "tests/architecture.c": "lib/dynamic-loader/tests/architecture.c",
+    "tests/runtime.c": "lib/dynamic-loader/tests/runtime.c"
+  },
+  "SPDX-FileCopyrightText": "2026 roolrz",
+  "SPDX-License-Identifier": "Apache-2.0",
+  "mounts": {
+    "": "lib/dynamic-loader"
+  },
+  "packages": [],
+  "tests": [
+    [
+      "make",
+      "sdk-test"
+    ]
+  ]
+}
