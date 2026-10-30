@@ -44,7 +44,7 @@ virtual addresses; ELF load bias accounts for each image's first load segment.
 | Bootstrap stack | `[0x3df000, 0x3ff000)`, with a guard page at each end | Kernel; the upper 64 KiB holds launch records, the lower 64 KiB holds loader C frames |
 | Main executable | `[0x400000, 0x10000000)` | Shared image mapper; PIE is biased to the beginning, fixed-address images must fit |
 | Dynamic dependencies | Allocated from `0x20000000`, with separate VMARs | Formal dynamic loader |
-| Final stack and heap | Chosen by the application's Native runtime | `libhyper`; outside the initial loader contract |
+| Final stack and heap | Chosen by the application's Native runtime | `libsystem`; outside the initial loader contract |
 
 Static application startup retires the loader and bootstrap stack after copying
 launch records and switching to the final stack. Dynamic startup retains the

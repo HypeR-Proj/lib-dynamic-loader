@@ -22,7 +22,7 @@ does not interpret CR or Ctrl-D: canonical EOF, conversion, raw binary handling
 and read timing are implemented by the formal terminal. `top` and `vmm console`
 select raw mode and use the same runtime input owner as `std::io`.
 See [Native terminals](https://hyper-proj.github.io/terminal-service/docs/terminal.html) and the
-[runtime contract](https://github.com/HypeR-Proj/libc/blob/main/README.md).
+[runtime contract](https://github.com/HypeR-Proj/lib-system/blob/main/README.md).
 
 `make test-console ARCH=aarch64` checks interactive shell typeahead, EOF,
 std child inheritance, binary pipes, paced input, idle wakeups and return from

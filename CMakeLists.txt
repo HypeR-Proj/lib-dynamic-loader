@@ -41,7 +41,7 @@ target_link_options(hyper_dynamic_loader PRIVATE
     -Wl,--build-id=none,--gc-sections,-z,noexecstack,-z,max-page-size=4096
     -Wl,--hash-style=sysv,-soname,ld-hyper-${HYPER_ARCH}.so
     -Wl,-T,${HYPER_SYSROOT}/lib/hyper/${HYPER_ARCH}/hyper-native.ld
-    ${HYPER_SYSROOT}/lib/libhyper.a
+    ${HYPER_SYSROOT}/lib/libsystem.a
 )
 set_target_properties(hyper_dynamic_loader PROPERTIES
     OUTPUT_NAME ld-hyper-${HYPER_ARCH}.so

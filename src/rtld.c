@@ -1312,7 +1312,7 @@ __hyper_rtld_link(const ElfImage *image, const ElfLaunch *launch, hyper_native_h
 	}
 	/* Resolve in the relocated shared runtime, never the loader's static
 	 * primitives or an interposing app. The loader remains resident for dlopen. */
-	Object *runtime = find_object("libhyper.so");
+	Object *runtime = find_object("libsystem.so");
 	int weak = 0;
 	void *hook = runtime ? find_symbol_in(runtime, "hyper_runtime_start", &weak) : NULL;
 	if (!hook) {
