@@ -14,5 +14,37 @@
       "sh",
       "sdk/toolchain/scripts/check-dynamic-loader.sh"
     ]
-  ]
+  ],
+  "artifacts": [
+    {
+      "source": "{sdk}/lib64/ld-hyper-{arch}.so",
+      "destination": "lib64/ld-hyper-{arch}.so",
+      "mode": "0755",
+      "profiles": [
+        "system",
+        "development"
+      ],
+      "environment": "system"
+    }
+  ],
+  "build": {
+    "actions": {
+      "all": [
+        [
+          "make",
+          "-C",
+          "{workspace}",
+          "sdk"
+        ]
+      ],
+      "build": [
+        [
+          "make",
+          "-C",
+          "{workspace}",
+          "sdk"
+        ]
+      ]
+    }
+  }
 }
