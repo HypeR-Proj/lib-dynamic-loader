@@ -61,7 +61,7 @@ require an explicit process-wide quiescence protocol.
 ## Runtime initialization
 
 For dynamic applications the loader resolves `hyper_runtime_start` directly
-in the relocated `libhyper.so` and passes the entry vector and a non-returning
+in the relocated `libsystem.so` and passes the entry vector and a non-returning
 continuation. That vector carries the same invocation capabilities to the shared
 runtime. It binds them before initializing the heap, then creates the final main
 stack, copies startup data, switches SP and releases the kernel bootstrap
