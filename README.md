@@ -14,7 +14,7 @@ with a bootstrap-channel handle, exactly as for the smaller
 [stage-1 loader](https://github.com/HypeR-Proj/bootstrap/blob/main/userspace-loader/README.md).
 
 The loader self-relocates before accessing initialized state, then uses the
-96-byte startup record to bind its ExecutionContext, ObjectFactory and SystemInfo
+112-byte startup record to bind its ExecutionContext, ObjectFactory and SystemInfo
 handles before any context-dependent operation. It uses the internal
 [ELF loading primitives](elf/README.md) to map the application
 once and construct its entry vector. A dynamic application's `PT_INTERP` must
@@ -129,3 +129,12 @@ python3 project.py test lib-dynamic-loader
 
 Paths in the documentation are relative to the repo-managed workspace root.
 Edit this repository and prepare the workspace again before building.
+
+The optional kernel vDSO arrives as paired image/data VMO capabilities in the
+startup header. The loader uses lib-system's allocation-free mapping helper to
+reserve an ELF-described region, maps code RX and observations RO/NX, then closes
+the pair and passes the ELF base in auxiliary-vector entry 33. A failed optional
+mapping destroys its partial region and selects syscall fallback. These mappings
+remain independent of the disposable loader and initial stack. The kernel owns
+code provenance, live backing and permission ceilings; it does not load an
+application image on behalf of this helper.

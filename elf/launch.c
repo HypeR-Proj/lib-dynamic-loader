@@ -3,9 +3,10 @@
  */
 /* Shared Native loader protocol; no heap, TLS, global state or filesystem lookup. */
 #include "launch.h"
+#include <hyper/vdso.h>
 #include <string.h>
 
-#define AUXILIARY_COUNT 16
+#define AUXILIARY_COUNT 17
 #define VECTOR_WORDS                                                                               \
 	(1 + HYPER_LAUNCH_MAX_ARGUMENTS + 1 + HYPER_LAUNCH_MAX_ENVIRONMENT + 1 +                   \
 	 AUXILIARY_COUNT * 2)
@@ -148,6 +149,7 @@ uintptr_t elf_launch_stack(const ElfLaunch *launch, const ElfImage *main,
 	AUX(6, IMAGE_PAGE);
 	AUX(7, linker_base);
 	AUX(9, main->entry);
+	AUX(HYPER_NATIVE_VDSO_AUXV_BASE, hyper_vdso_map(boot->root_vmar, boot->vdso_image, boot->vdso_data));
 	AUX(HYPER_AUXV_STARTUP_HANDLES, (uintptr_t)handles);
 	AUX(HYPER_AUXV_STARTUP_HANDLE_COUNT, boot->handle_count + 5);
 	AUX(HYPER_AUXV_INITIAL_STACK_BASE, boot->stack_base - IMAGE_PAGE);

@@ -20,6 +20,12 @@
 #include "../src/rtld.c"
 #include "../elf/launch.c"
 const Elf64_Ehdr __ehdr_start = {0};
+uintptr_t hyper_vdso_map(hyper_native_handle_t root, hyper_native_handle_t image,
+                       hyper_native_handle_t data)
+{
+    (void)root; (void)image; (void)data;
+    return 0;
+}
 
 typedef struct {
 	uint64_t padding;
